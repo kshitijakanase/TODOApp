@@ -7,18 +7,23 @@
 //
 
 import UIKit
+import CoreData
 
-class ToDoListViewController: UITableViewController {
+class ToDoListViewController: UITableViewController  {
     
-    var itemArray = [item]()
-      let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("myNewItem.plist")
-//   let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("ToDoApp.plist")
-//    print(dataFilePath!)
+    var itemArray = [Item]()
+    var selectedCategory : Category? {
+        didSet{
+
+            loadIteams()
+        }
+    }
+     
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+
     override func viewDidLoad() {
         super.viewDidLoad()
-    
-        
-         loadIteams()
+   
     }
     
 //MARK - TABLEVIEW DATASOURCE METHODS
@@ -55,9 +60,10 @@ class ToDoListViewController: UITableViewController {
         
         let action = UIAlertAction(title: "Add Item", style: .default) { (action) in
             
-            let newItem = item()
+            let newItem = Item(context: self.context)
             newItem.title = textField.text!
-            
+            newItem.done = false
+            newItem.parentCategory = self.selectedCategory
             self.itemArray.append(newItem)
           
            self.aFuncToSaveItems()
@@ -72,13 +78,10 @@ class ToDoListViewController: UITableViewController {
         present(alert, animated: true, completion: nil)
     }
     func aFuncToSaveItems(){
-        let encoder = PropertyListEncoder()
-
-                  do {
-                      let data = try encoder.encode(itemArray)
-                      try data.write(to: dataFilePath!)
-
-                  }catch {
+       do {
+                    try context.save()
+        
+       }catch {
                       print ("error \(error)")
                   }
 
@@ -87,16 +90,46 @@ class ToDoListViewController: UITableViewController {
     
     
     
-    func loadIteams(){
-        if let data = try? Data(contentsOf: dataFilePath!){
-            let decoder = PropertyListDecoder()
+    func loadIteams(with request: NSFetchRequest<Item>  = Item.fetchRequest(),  predicate : NSPredicate? = nil){
+  //  let request : NSFetchRequest<Item> = Item.fetchRequest()
+        let categoryPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", selectedCategory!.name!)
+        
+        if let additionPredicate = predicate{
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categoryPredicate, additionPredicate])
+        }else {
+            request.predicate = categoryPredicate
+        }
             do{
-            itemArray = try decoder.decode([item].self, from: data)
+              itemArray  = try context.fetch(request)
             }
             catch{
-                print("ERROR DURRING PRINTING ITEMS FROM PLIST -\(error)")
+                print("ERROR DURRING FETCHING DATA FROM NS -\(error)")
             }
+        tableView.reloadData()
         }
-    }
 }
 
+extension ToDoListViewController: UISearchBarDelegate {
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        let request : NSFetchRequest<Item> = Item.fetchRequest()
+       let predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
+        
+         request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+       
+        loadIteams(with: request, predicate: predicate)
+
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchBar.text?.count == 0 {
+            loadIteams()
+            DispatchQueue.main.async {
+                 searchBar.resignFirstResponder()
+            }
+    }
+
+    
+}
+
+}
